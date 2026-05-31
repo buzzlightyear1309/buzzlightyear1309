@@ -1,0 +1,107 @@
+name: Streak card
+
+# Regenerates the contribution-streak SVG from GitHub's live data and publishes
+# it to the `stats` branch, so the README points at a file we control instead of
+# a shared public instance. Runs the DenverCoder1/github-readme-streak-stats
+# engine in-runner (own token, own timezone) — no persistent server.
+
+on:
+  schedule:
+    - cron: "0 2 * * *" # daily, 02:00 UTC (04:00 SAST)
+  workflow_dispatch: {} # allow manual runs
+
+permissions:
+  contents: write
+
+concurrency:
+  group: streak-card
+  cancel-in-progress: true
+
+env:
+  GH_USER: buzzlightyear1309
+  TZ: Africa/Johannesburg
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout streak-stats engine
+        uses: actions/checkout@v4
+        with:
+          repository: DenverCoder1/github-readme-streak-stats
+          ref: master
+          path: .engine
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: intl, mbstring, curl
+          ini-values: date.timezone=Africa/Johannesburg
+          tools: composer
+
+      - name: Install engine dependencies
+        working-directory: .engine
+        run: composer install --no-dev --prefer-dist --no-interaction --no-progress
+
+      - name: Configure token
+        working-directory: .engine
+        env:
+          # Prefers a no-scope PAT (secret STREAK_TOKEN) if you add one,
+          # otherwise falls back to the repo's built-in GITHUB_TOKEN.
+          STREAK_TOKEN: ${{ secrets.STREAK_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          printf 'TOKEN=%s\nDISABLE_CACHE=true\n' "$STREAK_TOKEN" > .env
+
+      - name: Generate streak SVG
+        working-directory: .engine
+        run: |
+          set -euo pipefail
+          php -S 127.0.0.1:8000 -t src >/tmp/php.log 2>&1 &
+          echo $! > /tmp/php.pid
+          # wait for the server to come up
+          for i in $(seq 1 40); do
+            if curl -sf "http://127.0.0.1:8000/?user=${GH_USER}" -o /dev/null; then
+              break
+            fi
+            sleep 0.5
+          done
+          # theme params mirror the original README card exactly
+          PARAMS='hide_border=true&background=221f22&stroke=403e41&ring=ffd866&fire=ff6188&currStreakLabel=a9dc76&currStreakNum=fcfcfa&sideLabels=fcfcfa&dates=939293&sideNums=78dce8'
+          curl -sf "http://127.0.0.1:8000/?user=${GH_USER}&${PARAMS}" -o "${GITHUB_WORKSPACE}/streak.svg"
+          kill "$(cat /tmp/php.pid)" 2>/dev/null || true
+          echo "----- php server log -----"
+          cat /tmp/php.log || true
+
+      - name: Validate SVG
+        run: |
+          set -euo pipefail
+          if ! grep -q "<svg" streak.svg; then
+            echo "::error::Output is not an SVG"
+            head -c 800 streak.svg; echo
+            exit 1
+          fi
+          if ! grep -q "Current Streak" streak.svg; then
+            echo "::error::SVG has no streak content — likely an auth/API error. If this persists, add a no-scope PAT as the STREAK_TOKEN secret."
+            head -c 800 streak.svg; echo
+            exit 1
+          fi
+          echo "Valid streak card: $(wc -c < streak.svg) bytes"
+
+      - name: Publish to stats branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          cp streak.svg "$work/streak.svg"
+          cd "$work"
+          git init -q
+          git checkout -q -b stats
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add streak.svg
+          git commit -q -m "chore: update streak card [skip ci]"
+          # single-commit force push keeps the stats branch tiny and main untouched
+          git push -f -q "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" stats
+          echo "Published streak.svg to the stats branch."
