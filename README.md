@@ -56,6 +56,7 @@ stores.
 <!-- ===================== FOOTER ===================== -->
 <div align="center">
 
-<img src="https://streak-stats.demolab.com?user=buzzlightyear1309&hide_border=true&background=221f22&stroke=403e41&ring=ffd866&fire=ff6188&currStreakLabel=a9dc76&currStreakNum=fcfcfa&sideLabels=fcfcfa&dates=939293&sideNums=78dce8" alt="GitHub streak" />
+<!-- Streak card is regenerated daily by .github/workflows/streak-card.yml and published to the `stats` branch -->
+<img src="https://raw.githubusercontent.com/buzzlightyear1309/buzzlightyear1309/stats/streak.svg" alt="GitHub streak" />
 
 </div>
