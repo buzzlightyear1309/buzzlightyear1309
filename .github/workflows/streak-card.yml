@@ -25,12 +25,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout streak-stats engine
-        uses: actions/checkout@v4
-        with:
-          repository: DenverCoder1/github-readme-streak-stats
-          ref: master
-          path: .engine
+      - name: Fetch streak-stats engine
+        # Plain anonymous clone of the public engine repo. Avoids actions/checkout
+        # injecting this repo's GITHUB_TOKEN as an auth header, which GitHub rejects
+        # for cross-repo fetches.
+        run: git clone --depth 1 https://github.com/DenverCoder1/github-readme-streak-stats .engine
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
